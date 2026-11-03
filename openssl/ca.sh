@@ -56,7 +56,15 @@ prompt_subjects() {
 
 make_ca() {
     echo "-- Creating Self-Signed Root CA certificate and key"
-    openssl genpkey -algorithm EC -out ca-root.key \
+    CA_ROOT_DIR=ca-root
+    mkdir $CA_ROOT_DIR
+    mkdir $CA_ROOT_DIR/newcerts
+    mkdir $CA_ROOT_DIR/private
+    touch $CA_ROOT_DIR/index.txt
+    touch $CA_ROOT_DIR/certs
+    echo "01" > $CA_ROOT_DIR/serial
+    echo "00" > $CA_ROOT_DIR/crlnumber
+    openssl genpkey -algorithm EC -out $CA_ROOT_DIR/private/cakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
     openssl req \
@@ -64,8 +72,8 @@ make_ca() {
         -noenc \
         -sha3-512 \
         -x509 \
-        -key ca-root.key \
-        -out ca-root.crt \
+        -key $CA_ROOT_DIR/private/cakey.pem \
+        -out cacert.pem \
         -config $CNF_PATH/ca-root.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_ROOT" \
         -extensions v3_req \
@@ -74,30 +82,35 @@ make_ca() {
 
 make_int() {
     echo "-- Creating Intermediate CA certificate and key"
-    openssl genpkey -algorithm EC -out ca-int.key \
+    CA_INT_DIR=ca-int
+    mkdir $CA_INT_DIR
+    mkdir $CA_INT_DIR/newcerts
+    mkdir $CA_INT_DIR/private
+    touch $CA_INT_DIR/index.txt
+    touch $CA_INT_DIR/certs
+    echo "01" > $CA_INT_DIR/serial
+    echo "00" > $CA_INT_DIR/crlnumber
+    openssl genpkey -algorithm EC -out $CA_INT_DIR/private/cakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
     openssl req \
         -new \
         -nodes \
         -sha3-512 \
-        -key ca-int.key \
-        -out ca-int.csr \
+        -key $CA_INT_DIR/private/cakey.pem \
+        -out cacert.csr \
         -config $CNF_PATH/ca-int.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_INT" \
-        -extensions v3_req \
-        -batch
-    openssl req -in ca-int.csr -noout -verify
-    openssl x509 \
-        -req \
-        -CA ca-root.crt \
-        -CAkey ca-root.key \
-        -CAcreateserial \
-        -in ca-int.csr \
-        -out ca-int.crt \
-        -extfile $CNF_PATH/ca-int.cnf \
+        -extensions v3_req
+    openssl req -in cacert.csr -noout -verify
+
+    openssl ca \
+        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -in $CA_INT_DIR/cacert.csr \
+        -extfile $CNF_PATH/ca-root.cnf \
         -extensions v3_req \
         -days $DAYS
+
     openssl verify -CAfile ca-root.crt ca-int.crt
     echo "Creating CA chain"
     cat ca-int.crt ca-root.crt > ca-chain.pem
@@ -221,7 +234,7 @@ usage() {
 if [ $# -eq 2 ]; then
     if [ "$1" == "init" ]; then
         echo "arfvote certification authority - initialization"
-        CNF_PATH=$2
+        CNF_PATH=$(realpath $2)
         prompt_subjects
         echo ""
         make_ca
