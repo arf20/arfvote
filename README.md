@@ -6,14 +6,39 @@
  - Voter submits ballot anonymously to central authority
  - Central authority verifies all ballot signatures and publishes the counting results incl. ballots
 
+## PKI
+
+Voters are centrally registered because the authority must know who are allowed
+to vote
+
+```
+                   Certificate Authority Root
+                               |
+                               v
+               Certificate Authority Inermediate
+                               |
+       +-----------------------+----+--------------------+
+       |                            |                    |
+       v                            v                    v
+Registration Authority   Verification Authority       Members
+                                                       ...
+```
+
+All certificates are valid for only 30 days
+
+### CA
+
+Signs certificates for RA, VA and members
+
+### Member RA
+
+Verifies members and creates CSRs for CA to sign
+
+### Voter VA and RA
+
+Verifies member certificate and emits anonymous ballots
+
 ## Cryptography
 
-### Root CA
-
-Key pair: ML-DSA-87
-
-X25519MLKEM768
-
- - X25519
- - ML-KEM-768
+secp384r1 (ECDSA)
 
