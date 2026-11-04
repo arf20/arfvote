@@ -12,7 +12,7 @@ DEF_CN_ROOT="AC-Raiz"
 DEF_CN_INT="AC-Intermedio"
 DEF_CN_RA="ARegistro"
 DEF_CN_VA="AVerificacion"
-DEF_CN_TV="SistemaTelevoto"
+DEF_CN_TV="Televoto"
 DEF_SAN_RA="ra.linux.inf.um.es"
 DEF_SAN_VA="va.linux.inf.um.es"
 DEF_SAN_TV="tv.linux.inf.um.es"
@@ -20,6 +20,11 @@ DEF_DAYS=3650
 # ====================================================================
 
 CNF_PATH="./"
+CA_ROOT_DIR=ca-root
+CA_INT_DIR=ca-int
+RA_DIR=ra
+VA_DIR=va
+TV_DIR=tv
 
 prompt_subjects() {
     read -p "Country [$DEF_C]: " C
@@ -56,7 +61,6 @@ prompt_subjects() {
 
 make_ca() {
     echo "-- Creating Self-Signed Root CA certificate and key"
-    CA_ROOT_DIR=ca-root
     mkdir $CA_ROOT_DIR
     mkdir $CA_ROOT_DIR/newcerts
     mkdir $CA_ROOT_DIR/private
@@ -73,7 +77,7 @@ make_ca() {
         -sha3-512 \
         -x509 \
         -key $CA_ROOT_DIR/private/cakey.pem \
-        -out cacert.pem \
+        -out $CA_ROOT_DIR/cacert.pem \
         -config $CNF_PATH/ca-root.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_ROOT" \
         -extensions v3_req \
@@ -82,7 +86,6 @@ make_ca() {
 
 make_int() {
     echo "-- Creating Intermediate CA certificate and key"
-    CA_INT_DIR=ca-int
     mkdir $CA_INT_DIR
     mkdir $CA_INT_DIR/newcerts
     mkdir $CA_INT_DIR/private
@@ -98,103 +101,113 @@ make_int() {
         -nodes \
         -sha3-512 \
         -key $CA_INT_DIR/private/cakey.pem \
-        -out cacert.csr \
+        -out $CA_INT_DIR/cacert.csr \
         -config $CNF_PATH/ca-int.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_INT" \
         -extensions v3_req
-    openssl req -in cacert.csr -noout -verify
+    openssl req -in $CA_INT_DIR/cacert.csr -noout -verify
 
     openssl ca \
-        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -keyfile $CA_ROOT_DIR/private/cakey.pem \
         -in $CA_INT_DIR/cacert.csr \
+        -out $CA_INT_DIR/cacert.pem \
+        -config $CNF_PATH/ca-root.cnf \
         -extfile $CNF_PATH/ca-root.cnf \
         -extensions v3_req \
-        -days $DAYS
+        -days $DAYS \
+        -batch
 
-    openssl verify -CAfile ca-root.crt ca-int.crt
-    echo "Creating CA chain"
-    cat ca-int.crt ca-root.crt > ca-chain.pem
+    openssl verify -CAfile $CA_ROOT_DIR/cacert.pem $CA_INT_DIR/cacert.pem
+    echo "-- Creating CA chain"
+    cat $CA_INT_DIR/cacert.pem $CA_ROOT_DIR/cacert.pem > $CA_INT_DIR/cachain.pem
 }
 
 make_ra() {
-    echo "-- Creating registration authority certificate and key"
-    openssl genpkey -algorithm EC -out ra.key \
+    echo "-- Creating Registration Authority certificate and key"
+    mkdir $RA_DIR
+    mkdir $RA_DIR/private
+    openssl genpkey -algorithm EC -out $RA_DIR/private/rakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
     openssl req \
         -new \
         -nodes \
-        -key ra.key \
-        -out ra.csr \
+        -key $RA_DIR/private/rakey.pem \
+        -out $RA_DIR/racert.csr \
         -config $CNF_PATH/ra.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_RA" \
         -addext "subjectAltName = DNS:$SAN_RA"
-    openssl req -in ra.csr -noout -verify
-    openssl x509 \
-        -req \
-        -CA ca-int.crt \
-        -CAkey ca-int.key \
-        -CAcreateserial \
-        -in ra.csr \
-        -out ra.crt \
-        -extfile $CNF_PATH/ra.cnf \
+    openssl req -in $RA_DIR/racert.csr -noout -verify
+
+    openssl ca \
+        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -in $RA_DIR/racert.csr \
+        -out $RA_DIR/racert.pem \
+        -config $CNF_PATH/ca-int.cnf \
+        -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
-        -days $DAYS
-    openssl verify -CAfile ca-chain.pem ra.crt
+        -days $DAYS \
+        -batch
+    openssl verify -CAfile $CA_INT_DIR/cachain.pem $RA_DIR/racert.pem
 }
 
 make_va() {
-    echo "-- Creating verification authority certificate and key"
-    openssl genpkey -algorithm EC -out va.key \
+    echo "-- Creating Verification Authority certificate and key"
+    mkdir $VA_DIR
+    mkdir $VA_DIR/private
+    openssl genpkey -algorithm EC -out $VA_DIR/private/vakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
     openssl req \
         -new \
         -nodes \
-        -key va.key \
-        -out va.csr \
+        -key $VA_DIR/private/vakey.pem \
+        -out $VA_DIR/vacert.csr \
         -config $CNF_PATH/va.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_VA" \
         -addext "subjectAltName = DNS:$SAN_VA"
-    openssl req -in va.csr -noout -verify
-    openssl x509 \
-        -req \
-        -CA ca-int.crt \
-        -CAkey ca-int.key \
-        -CAcreateserial \
-        -in va.csr \
-        -out va.crt \
-        -extfile $CNF_PATH/va.cnf \
+    openssl req -in $VA_DIR/vacert.csr -noout -verify
+
+    openssl ca \
+        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -in $VA_DIR/vacert.csr \
+        -out $VA_DIR/vacert.pem \
+        -config $CNF_PATH/ca-int.cnf \
+        -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
-        -days $DAYS
-    openssl verify -CAfile ca-chain.pem va.crt
+        -days $DAYS \
+        -batch
+    openssl verify -CAfile $CA_INT_DIR/cachain.pem $VA_DIR/vacert.pem
 }
 
 make_tv() {
-    echo "-- Creating televoting system certificate and key"
-    openssl genpkey -algorithm EC -out tv.key \
+    echo "-- Creating TeleVoting system certificate and key"
+    mkdir $TV_DIR
+    mkdir $TV_DIR/private
+    openssl genpkey -algorithm EC -out $TV_DIR/private/tvkey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
     openssl req \
         -new \
         -nodes \
-        -key tv.key \
-        -out tv.csr \
+        -key $TV_DIR/private/tvkey.pem \
+        -out $TV_DIR/tvcert.csr \
         -config $CNF_PATH/tv.cnf \
-        -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_VA" \
+        -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_TV" \
         -addext "subjectAltName = DNS:$SAN_TV"
-    openssl req -in tv.csr -noout -verify
-    openssl x509 \
-        -req \
-        -CA ca-int.crt \
-        -CAkey ca-int.key \
-        -CAcreateserial \
-        -in tv.csr \
-        -out tv.crt \
-        -extfile $CNF_PATH/tv.cnf \
+    openssl req -in $TV_DIR/tvcert.csr -noout -verify
+
+    openssl ca \
+        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -in $TV_DIR/tvcert.csr \
+        -out $TV_DIR/tvcert.pem \
+        -config $CNF_PATH/ca-int.cnf \
+        -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
-        -days $DAYS
-    openssl verify -CAfile ca-chain.pem tv.crt
+        -days $DAYS \
+        -batch
+
+    openssl verify -CAfile $CA_INT_DIR/cachain.pem $TV_DIR/tvcert.pem
 }
 
 write_config() {
