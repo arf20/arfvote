@@ -32,7 +32,7 @@ All certificates are valid for only 30 days
 
 #### CA Root
 
-Signs intermediate
+Signs Intermediate CA
 
 #### CA Intermediate
 
@@ -81,5 +81,6 @@ Submits ballot to Tally System
 
 ## Cryptography
 
-secp384r1 (ECDSA)
+Private keys: secp384r1 (ECDSA)
+Private key encryption for CA and Member: AES-256-CBC
 

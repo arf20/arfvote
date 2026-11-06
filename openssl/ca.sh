@@ -17,6 +17,7 @@ DEF_SAN_RA="ra.linux.inf.um.es"
 DEF_SAN_VA="va.linux.inf.um.es"
 DEF_SAN_TV="tv.linux.inf.um.es"
 DEF_DAYS=3650
+DEF_ENC="test"
 # ====================================================================
 
 CNF_PATH="./"
@@ -26,7 +27,7 @@ RA_DIR=ra
 VA_DIR=va
 TV_DIR=tv
 
-prompt_subjects() {
+prompt() {
     read -p "Country [$DEF_C]: " C
     read -p "State/Province [$DEF_ST]: " ST
     read -p "Locality [$DEF_L]: " L
@@ -42,6 +43,7 @@ prompt_subjects() {
     read -p "DNS Subject Alternate Name for VA [$DEF_SAN_VA]: " SAN_VA
     read -p "DNS Subject Alternate Name for TV [$DEF_SAN_TV]: " SAN_TV
     read -p "Validity period in days [$DEF_DAYS]: " DAYS
+    read -p "CA private key encryption key [$DEF_ENC]: " ENC
     C=${C:-"$DEF_C"}
     ST=${ST:-"$DEF_ST"}
     L=${L:-"$DEF_L"}
@@ -57,6 +59,19 @@ prompt_subjects() {
     SAN_VA=${SAN_VA:-"$DEF_SAN_VA"}
     SAN_TV=${SAN_TV:-"$DEF_SAN_TV"}
     DAYS=${DAYS:-"$DEF_DAYS"}
+    ENC=${ENC:-"$DEF_ENC"}
+
+    if [ -z "$ENC" ]; then
+        ENC_ARG=""
+    else
+        ENC_ARG="-pass env:ENC -aes-256-cbc"
+    fi
+
+    if [ -z "$ENC" ]; then
+        DEENC_ARG=""
+    else
+        DEENC_ARG="-passin env:ENC"
+    fi
 }
 
 make_ca() {
@@ -68,13 +83,13 @@ make_ca() {
     touch $CA_ROOT_DIR/certs
     echo "01" > $CA_ROOT_DIR/serial
     echo "00" > $CA_ROOT_DIR/crlnumber
-    openssl genpkey -algorithm EC -out $CA_ROOT_DIR/private/cakey.pem \
-       -pkeyopt ec_paramgen_curve:P-384 \
-       -pkeyopt ec_param_enc:named_curve
+    env ENC=$ENC openssl genpkey -algorithm EC -out $CA_ROOT_DIR/private/cakey.pem \
+        -pkeyopt ec_paramgen_curve:P-384 \
+        -pkeyopt ec_param_enc:named_curve \
+        $ENC_ARG
     chmod -R go-rwx $CA_ROOT_DIR/private/
-    openssl req \
+    env ENC=$ENC openssl req \
         -new \
-        -noenc \
         -sha3-512 \
         -x509 \
         -key $CA_ROOT_DIR/private/cakey.pem \
@@ -82,7 +97,8 @@ make_ca() {
         -config $CNF_PATH/ca-root.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_ROOT" \
         -extensions v3_req \
-        -days $DAYS
+        -days $DAYS \
+        $DEENC_ARG
 }
 
 make_int() {
@@ -94,22 +110,23 @@ make_int() {
     touch $CA_INT_DIR/certs
     echo "01" > $CA_INT_DIR/serial
     echo "00" > $CA_INT_DIR/crlnumber
-    openssl genpkey -algorithm EC -out $CA_INT_DIR/private/cakey.pem \
+    env ENC=$ENC openssl genpkey -algorithm EC -out $CA_INT_DIR/private/cakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
-       -pkeyopt ec_param_enc:named_curve
+       -pkeyopt ec_param_enc:named_curve \
+        $ENC_ARG
     chmod -R go-rwx $CA_INT_DIR/private/
-    openssl req \
+    env ENC=$ENC openssl req \
         -new \
-        -nodes \
         -sha3-512 \
         -key $CA_INT_DIR/private/cakey.pem \
         -out $CA_INT_DIR/cacert.csr \
         -config $CNF_PATH/ca-int.cnf \
         -subj "/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$CN_INT" \
-        -extensions v3_req
+        -extensions v3_req \
+        $DEENC_ARG
     openssl req -in $CA_INT_DIR/cacert.csr -noout -verify
 
-    openssl ca \
+    env ENC=$ENC openssl ca \
         -keyfile $CA_ROOT_DIR/private/cakey.pem \
         -in $CA_INT_DIR/cacert.csr \
         -out $CA_INT_DIR/cacert.pem \
@@ -117,6 +134,7 @@ make_int() {
         -extfile $CNF_PATH/ca-root.cnf \
         -extensions v3_req \
         -days $DAYS \
+        $DEENC_ARG \
         -batch
 
     openssl verify -CAfile $CA_ROOT_DIR/cacert.pem $CA_INT_DIR/cacert.pem
@@ -138,7 +156,6 @@ make_ra() {
     chmod -R go-rwx $RA_DIR/private/
     openssl req \
         -new \
-        -nodes \
         -key $RA_DIR/private/rakey.pem \
         -out $RA_DIR/racert.csr \
         -config $CNF_PATH/ra.cnf \
@@ -146,7 +163,7 @@ make_ra() {
         -addext "subjectAltName = DNS:$SAN_RA"
     openssl req -in $RA_DIR/racert.csr -noout -verify
 
-    openssl ca \
+    env ENC=$ENC openssl ca \
         -keyfile $CA_INT_DIR/private/cakey.pem \
         -in $RA_DIR/racert.csr \
         -out $RA_DIR/racert.pem \
@@ -154,6 +171,7 @@ make_ra() {
         -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
         -days $DAYS \
+        $DEENC_ARG \
         -batch
     openssl verify -CAfile $CA_INT_DIR/cachain.pem $RA_DIR/racert.pem
 }
@@ -168,7 +186,6 @@ make_va() {
     chmod -R go-rwx $VA_DIR/private/
     openssl req \
         -new \
-        -nodes \
         -key $VA_DIR/private/vakey.pem \
         -out $VA_DIR/vacert.csr \
         -config $CNF_PATH/va.cnf \
@@ -176,7 +193,7 @@ make_va() {
         -addext "subjectAltName = DNS:$SAN_VA"
     openssl req -in $VA_DIR/vacert.csr -noout -verify
 
-    openssl ca \
+    env ENC=$ENC openssl ca \
         -keyfile $CA_INT_DIR/private/cakey.pem \
         -in $VA_DIR/vacert.csr \
         -out $VA_DIR/vacert.pem \
@@ -184,6 +201,7 @@ make_va() {
         -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
         -days $DAYS \
+        $DEENC_ARG \
         -batch
     openssl verify -CAfile $CA_INT_DIR/cachain.pem $VA_DIR/vacert.pem
 }
@@ -198,7 +216,6 @@ make_tv() {
     chmod -R go-rwx $TV_DIR/private/
     openssl req \
         -new \
-        -nodes \
         -key $TV_DIR/private/tvkey.pem \
         -out $TV_DIR/tvcert.csr \
         -config $CNF_PATH/tv.cnf \
@@ -206,7 +223,7 @@ make_tv() {
         -addext "subjectAltName = DNS:$SAN_TV"
     openssl req -in $TV_DIR/tvcert.csr -noout -verify
 
-    openssl ca \
+    env ENC=$ENC openssl ca \
         -keyfile $CA_INT_DIR/private/cakey.pem \
         -in $TV_DIR/tvcert.csr \
         -out $TV_DIR/tvcert.pem \
@@ -214,6 +231,7 @@ make_tv() {
         -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
         -days $DAYS \
+        $DEENC_ARG \
         -batch
     openssl verify -CAfile $CA_INT_DIR/cachain.pem $TV_DIR/tvcert.pem
 }
@@ -273,7 +291,7 @@ if [ $# -eq 2 ]; then
     if [ "$1" == "init" ]; then
         echo "arfvote certification authority - initialization"
         CNF_PATH=$(realpath $2)
-        prompt_subjects
+        prompt
         echo ""
         make_ca
         echo ""
