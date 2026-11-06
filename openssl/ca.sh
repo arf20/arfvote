@@ -71,6 +71,7 @@ make_ca() {
     openssl genpkey -algorithm EC -out $CA_ROOT_DIR/private/cakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
+    chmod -R go-rwx $CA_ROOT_DIR/private/
     openssl req \
         -new \
         -noenc \
@@ -96,6 +97,7 @@ make_int() {
     openssl genpkey -algorithm EC -out $CA_INT_DIR/private/cakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
+    chmod -R go-rwx $CA_INT_DIR/private/
     openssl req \
         -new \
         -nodes \
@@ -126,9 +128,14 @@ make_ra() {
     echo "-- Creating Registration Authority certificate and key"
     mkdir $RA_DIR
     mkdir $RA_DIR/private
+    mkdir $RA_DIR/requests
+    mkdir $RA_DIR/approved
+    mkdir $RA_DIR/rejected
+    mkdir $RA_DIR/signed
     openssl genpkey -algorithm EC -out $RA_DIR/private/rakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
+    chmod -R go-rwx $RA_DIR/private/
     openssl req \
         -new \
         -nodes \
@@ -158,6 +165,7 @@ make_va() {
     openssl genpkey -algorithm EC -out $VA_DIR/private/vakey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
+    chmod -R go-rwx $VA_DIR/private/
     openssl req \
         -new \
         -nodes \
@@ -187,6 +195,7 @@ make_tv() {
     openssl genpkey -algorithm EC -out $TV_DIR/private/tvkey.pem \
        -pkeyopt ec_paramgen_curve:P-384 \
        -pkeyopt ec_param_enc:named_curve
+    chmod -R go-rwx $TV_DIR/private/
     openssl req \
         -new \
         -nodes \
@@ -206,33 +215,49 @@ make_tv() {
         -extensions v3_req \
         -days $DAYS \
         -batch
-
     openssl verify -CAfile $CA_INT_DIR/cachain.pem $TV_DIR/tvcert.pem
 }
 
 write_config() {
-    rm -f subj_config
-    echo "C=$C" >> subj_config
-    echo "ST=$ST" >> subj_config
-    echo "L=$L" >> subj_config
-    echo "O=$O" >> subj_config
-    echo "MEMBER_OU=$MEMBER_OU" >> subj_config
+    rm -f config member_config
+    echo "CNF_PATH=\"$CNF_PATH\"" >> config
+    echo "C=\"$C\"" >> config
+    echo "ST=\"$ST\"" >> config
+    echo "L=\"$L\"" >> config
+    echo "O=\"$O\"" >> config
+    echo "MEMBER_OU=\"$MEMBER_OU\"" >> config
+    echo "CA_ROOT_DIR=\"$CA_ROOT_DIR\"" >> config
+    echo "CA_INT_DIR=\"$CA_INT_DIR\"" >> config
+    echo "RA_DIR=\"$RA_DIR\"" >> config
+    echo "VA_DIR=\"$VA_DIR\"" >> config
+    echo "TV_DIR=\"$TV_DIR\"" >> config
+    echo "DAYS=$DAYS" >> config
+
+    echo "C=\"$C\"" >> member_config
+    echo "ST=\"$ST\"" >> member_config
+    echo "L=\"$L\"" >> member_config
+    echo "O=\"$O\"" >> member_config
+    echo "MEMBER_OU=\"$MEMBER_OU\"" >> member_config
+
+    cp $CNF_PATH/member.sh $CNF_PATH/member.cnf .
+    tar cf member_req_dist.tar member.sh member.cnf member_config
+    rm member.sh member.cnf member_config
 }
 
 sign_member() {
     echo "-- Signing member certificate request"
-    openssl req -in "$1" -noout -verify
-    openssl x509 \
-        -req \
-        -CA ca-root.crt \
-        -CAkey ca-root.key \
-        -CAcreateserial \
-        -in member.csr \
-        -out member.crt \
-        -extfile member.cnf \
+    openssl req -in $RA_DIR/approved/$1.csr -noout -verify
+    openssl ca \
+        -keyfile $CA_INT_DIR/private/cakey.pem \
+        -in $RA_DIR/approved/$1.csr \
+        -out $RA_DIR/signed/$1.pem \
+        -config $CNF_PATH/ca-int.cnf \
+        -policy policy_member \
+        -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
-        -days $DAYS
-    openssl verify -CAfile ca-chain.pem member.crt
+        -days $DAYS \
+        -batch
+    openssl verify -CAfile $CA_INT_DIR/cachain.pem $RA_DIR/signed/$1.pem
 }
 
 usage() {
@@ -262,6 +287,7 @@ if [ $# -eq 2 ]; then
         echo ""
         write_config
     elif [ "$1" == "sign" ]; then
+        source ./config
         sign_member $2
     else
         usage

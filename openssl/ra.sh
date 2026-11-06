@@ -1,17 +1,26 @@
 #!/bin/bash
 set -e
 
-req_member() {
-    echo "Creating member request and key"
-    openssl genpkey -algorithm EC -out member.key \
-       -pkeyopt ec_paramgen_curve:P-384 \
-       -pkeyopt ec_param_enc:named_curve
-    openssl req \
-        -new \
-        -nodes \
-        -key member.key \
-        -out member.csr \
-        -config member.cnf
-    openssl req -in member.csr -noout -verify
+DEF_UID="arf20"
+
+prompt_req() {
+    read -p "Requester Member User Identifier [$DEF_UID]: " MEMBER_UID
+    MEMBER_UID=${MEMBER_UID:-"$DEF_UID"}
 }
+
+verify_req() {
+    echo "== Verify Member Certificate Request"
+    openssl req -in $RA_DIR/requests/$MEMBER_UID.csr -text -verify
+
+    echo ""
+    read -p "Approve request (y/n)?: " approval
+    case "$approval" in
+        y|Y|yes ) mv $RA_DIR/requests/$MEMBER_UID.csr $RA_DIR/approved;;
+        * ) mv $RA_DIR/requests/$MEMBER_UID.csr $RA_DIR/rejected;;
+    esac
+}
+
+source ./config
+prompt_req
+verify_req
 

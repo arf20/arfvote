@@ -45,3 +45,11 @@ organizationalUnitName = supplied
 commonName             = supplied
 emailAddress           = optional
 
+[policy_member]
+countryName            = supplied
+stateOrProvinceName    = supplied
+organizationName       = supplied
+organizationalUnitName = supplied
+userId                 = supplied
+emailAddress           = optional
+
