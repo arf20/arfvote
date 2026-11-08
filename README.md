@@ -10,14 +10,14 @@ Voters are centrally registered because the authority must know who are allowed
 to vote
 
 ```
-                       Certificate Authority Root
-X.509 PKI                          |
-                                   v
-                   Certificate Authority Inermediate
+X.509 PKI              Certificate Authority Root
                                    |
-           +-----------------------+----+--------------------+-----------------+
-           |                            |                    |                 |
-           v                            v                    v                 v
+                                   v
++------+           Certificate Authority Inermediate
+| LDAP |                           |
++------+   +-----------------------+----+--------------------+-----------------+
+     ^     |                            |                    |                 |
+     |     v                            v                    v                 v
 --- Registration Authority -- Verification Authority -- Televoting System -- Members ---
            |                                                                   v
                                                                                |
@@ -40,9 +40,11 @@ Signs certificates for Registration Authority, Verification Authority, Televotin
 
 ### Member Registration Authority
 
-Verifies member certificate requests, approving or rejecting them
+Verifies and registers member certificate requests, approving or rejecting them
 
 Requires interactive physical presence of registration official and requester member
+
+Registrations are stored on a LDAP database
 
 ### Member Verification Authority (LDAP?)
 

@@ -18,6 +18,9 @@ DEF_SAN_VA="va.linux.inf.um.es"
 DEF_SAN_TV="tv.linux.inf.um.es"
 DEF_DAYS=3650
 DEF_ENC="test"
+DEF_LDAP_HOST="ldap://localhost"
+DEF_LDAP_ADMIN_DN="cn=admin,dc=linux,dc=inf,dc=um,dc=es"
+DEF_LDAP_MEMBER_BASE_DN="dc=linux,dc=inf,dc=um,dc=es"
 # ====================================================================
 
 CNF_PATH="./"
@@ -44,6 +47,9 @@ prompt() {
     read -p "DNS Subject Alternate Name for TV [$DEF_SAN_TV]: " SAN_TV
     read -p "Validity period in days [$DEF_DAYS]: " DAYS
     read -p "CA private key encryption key [$DEF_ENC]: " ENC
+    read -p "LDAP Host URI [$DEF_LDAP_HOST]: " LDAP_HOST
+    read -p "LDAP Admin DN [$DEF_LDAP_ADMIN_DN]: " LDAP_ADMIN_DN
+    read -p "LDAP Member Base DN [$DEF_LDAP_MEMBER_BASE_DN]: " LDAP_MEMBER_BASE_DN
     C=${C:-"$DEF_C"}
     ST=${ST:-"$DEF_ST"}
     L=${L:-"$DEF_L"}
@@ -60,6 +66,9 @@ prompt() {
     SAN_TV=${SAN_TV:-"$DEF_SAN_TV"}
     DAYS=${DAYS:-"$DEF_DAYS"}
     ENC=${ENC:-"$DEF_ENC"}
+    LDAP_HOST=${LDAP_URI:-"$DEF_LDAP_HOST"}
+    LDAP_ADMIN_DN=${LDAP_ADMIN_DN:-"$DEF_LDAP_ADMIN_DN"}
+    LDAP_MEMBER_BASE_DN=${LDAP_MEMBER_BASE_DN:-"$DEF_LDAP_MEMBER_BASE_DN"}
 
     if [ -z "$ENC" ]; then
         ENC_ARG=""
@@ -250,6 +259,12 @@ write_config() {
     echo "VA_DIR=\"$VA_DIR\"" >> config
     echo "TV_DIR=\"$TV_DIR\"" >> config
     echo "DAYS=$DAYS" >> config
+    if [ -z "$ENC" ]; then
+        echo "DEENC_ARG=\"$DEENC_ARG\"" >> config
+    fi
+    echo "LDAP_HOST=\"$LDAP_HOST\"" >> config
+    echo "LDAP_ADMIN_DN=\"$LDAP_ADMIN_DN\"" >> config
+    echo "LDAP_MEMBER_BASE_DN=\"$LDAP_MEMBER_BASE_DN\"" >> config
 
     echo "C=\"$C\"" >> member_config
     echo "ST=\"$ST\"" >> member_config
@@ -273,8 +288,7 @@ sign_member() {
         -policy policy_member \
         -extfile $CNF_PATH/ca-int.cnf \
         -extensions v3_req \
-        -days $DAYS \
-        -batch
+        -days $DAYS
     openssl verify -CAfile $CA_INT_DIR/cachain.pem $RA_DIR/signed/$1.pem
 }
 
@@ -287,9 +301,11 @@ usage() {
 
 
 # MAIN
+echo "arfvote certification authority"
+
 if [ $# -eq 2 ]; then
     if [ "$1" == "init" ]; then
-        echo "arfvote certification authority - initialization"
+        echo "authority initialization"
         CNF_PATH=$(realpath $2)
         prompt
         echo ""
